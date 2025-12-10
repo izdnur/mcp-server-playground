@@ -1,0 +1,11 @@
+{
+    "id": "fetch-ms-details",
+    "title": "Fetch Microservice Details",
+    "description": "Fetch and display details about one or more specific microservices.",
+    "template": "Please provide detailed information about the following microservices: {{microservice_names}}. Include their purpose, key features, and any relevant technical specifications.",
+    "instructions": "",
+    "args": [
+        "microservice_names"
+    ],
+    "version": "0.1.0"
+}
