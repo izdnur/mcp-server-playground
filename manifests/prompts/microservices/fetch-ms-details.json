@@ -1,11 +1,13 @@
 {
     "id": "fetch-ms-details",
     "title": "Fetch Microservice Details",
-    "description": "Fetch and display details about one or more specific microservices.",
-    "template": "Please provide detailed information about the following microservices: {{microservice_names}}. Include their purpose, key features, and any relevant technical specifications.",
-    "instructions": "",
+    "description": "Fetch and display details about one or more specific microservices. Only the requested microservice documentation will be loaded dynamically.",
+    "template": "IMPORTANT: You must ONLY provide information about the microservices listed here: {{microservice_names}}\n\nDo NOT include information about any other microservices, even if you have access to their documentation. Only use the resource content that has been explicitly provided for the requested microservices.\n\nRequested microservices: {{microservice_names}}\n\nProvide detailed information about ONLY these microservices, including their purpose, key features, and any relevant technical specifications.",
+    "instructions": "You must strictly limit your response to only the microservices specified in the microservice_names parameter. Do not infer, assume, or include information about any other microservices. If a microservice is not in the requested list, do not mention it at all.",
     "args": [
         "microservice_names"
     ],
-    "version": "0.1.0"
+    "dynamicResources": true,
+    "resourcePattern": "docs/microservices/{microservice_names}.md",
+    "version": "0.3.0"
 }

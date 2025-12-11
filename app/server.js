@@ -103,6 +103,45 @@ function getResourceDescription(filename) {
   return descriptions[filename] || '';
 }
 
+function parseMicroserviceNames(argValue) {
+  if (!argValue) return [];
+  // Parse comma-separated values and trim whitespace
+  return argValue.split(',').map(name => name.trim()).filter(Boolean);
+}
+
+function loadDynamicMicroserviceResources(microserviceNames, promptDir) {
+  if (!microserviceNames || microserviceNames.length === 0) return [];
+  
+  const resources = [];
+  const docsPath = path.join('docs', promptDir);
+  
+  for (const msName of microserviceNames) {
+    const fileName = `${msName}.md`;
+    const filePath = path.join(docsPath, fileName);
+    const content = loadResource(filePath);
+    
+    if (content) {
+      resources.push({
+        name: path.join(docsPath, fileName),
+        content: content
+      });
+    }
+  }
+  
+  return resources;
+}
+
+function substituteTemplateVariables(template, args) {
+  if (!template || !args) return template;
+  
+  let result = template;
+  for (const [key, value] of Object.entries(args)) {
+    const placeholder = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+    result = result.replace(placeholder, value || '');
+  }
+  return result;
+}
+
 // MCP JSON-RPC handler
 function handleRequest(request) {
   const { method, params, id } = request;
@@ -154,26 +193,75 @@ function handleRequest(request) {
       const promptDir = getPromptDirectory(promptResult.relativePath);
       const messages = [];
       
+      // Debug: Log the incoming params to understand structure
+      process.stderr.write(`DEBUG: promptId=${promptId}, params=${JSON.stringify(params)}\n`);
+      
+      // Check if this prompt supports dynamic resource loading via arguments
+      // Handle multiple possible argument structures from different MCP clients
+      let microserviceNamesArg = params?.arguments?.microservice_names;
+      
+      // Handle case where Copilot sends argument with "undefined" key
+      if (!microserviceNamesArg && params?.arguments?.undefined) {
+        microserviceNamesArg = params.arguments.undefined;
+      }
+      
+      // Handle case where argument is first item in array
+      if (!microserviceNamesArg && params?.arguments && params.arguments[0]?.value) {
+        microserviceNamesArg = params.arguments[0].value;
+      }
+      
+      // For template substitution, create proper arguments object
+      const templateArgs = {
+        microservice_names: microserviceNamesArg || params?.arguments?.undefined || ''
+      };
+      
+      process.stderr.write(`DEBUG: microserviceNamesArg=${microserviceNamesArg}\n`);
+      
+      const supportsDynamicLoading = promptId === 'fetch-ms-details' && microserviceNamesArg;
+      
       // Auto-attach resources from matching directories
       if (promptDir) {
-        // Attach docs from /resources/docs/{promptDir}
-        const docsPath = path.join('docs', promptDir);
-        const docsResources = loadResourcesFromDirectory(docsPath);
-        if (docsResources.length > 0) {
-          const docsContents = docsResources
-            .map(res => `Resource: ${res.name}\n\n${res.content}`)
-            .join('\n\n---\n\n');
+        // For prompts with dynamic loading, only attach requested resources
+        if (supportsDynamicLoading) {
+          const microserviceNames = parseMicroserviceNames(microserviceNamesArg);
+          const docsResources = loadDynamicMicroserviceResources(microserviceNames, promptDir);
           
-          messages.push({
-            role: 'user',
-            content: {
-              type: 'resource',
-              resource: {
-                type: 'text',
-                text: docsContents
+          if (docsResources.length > 0) {
+            const docsContents = docsResources
+              .map(res => `Resource: ${res.name}\n\n${res.content}`)
+              .join('\n\n---\n\n');
+            
+            messages.push({
+              role: 'user',
+              content: {
+                type: 'resource',
+                resource: {
+                  type: 'text',
+                  text: docsContents
+                }
               }
-            }
-          });
+            });
+          }
+        } else {
+          // Default behavior: attach all docs from /resources/docs/{promptDir}
+          const docsPath = path.join('docs', promptDir);
+          const docsResources = loadResourcesFromDirectory(docsPath);
+          if (docsResources.length > 0) {
+            const docsContents = docsResources
+              .map(res => `Resource: ${res.name}\n\n${res.content}`)
+              .join('\n\n---\n\n');
+            
+            messages.push({
+              role: 'user',
+              content: {
+                type: 'resource',
+                resource: {
+                  type: 'text',
+                  text: docsContents
+                }
+              }
+            });
+          }
         }
         
         // Attach instructions from /resources/instructions/{promptDir}
@@ -259,12 +347,13 @@ function handleRequest(request) {
         }
       }
       
-      // Add the actual prompt template
+      // Add the actual prompt template with variable substitution
+      const templateText = substituteTemplateVariables(prompt.template || '', templateArgs);
       messages.push({
         role: 'user',
         content: {
           type: 'text',
-          text: prompt.template || ''
+          text: templateText
         }
       });
       
